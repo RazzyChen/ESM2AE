@@ -1,4 +1,46 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+# ==============================================================================
+#
+#                    High-Performance FASTA to LMDB Converter
+#
+# DESCRIPTION:
+#   This script converts large FASTA formatted sequence files into an LMDB
+#   (Lightning Memory-Mapped Database). It is designed for extreme performance
+#   and memory efficiency, making it suitable for processing terabyte-scale
+#   datasets that do not fit into RAM.
+#
+#   It employs a multi-process producer-consumer architecture to achieve true
+#   parallelism and uses memory-mapped files (`mmap`) by default for the
+#   fastest possible I/O. A fallback to the robust Bio.SeqIO parser is
+#   available for compatibility with non-standard FASTA files.
+#
+# INPUT:
+#   - A FASTA file (--fasta_file) containing biological sequences.
+#
+# OUTPUT:
+#   - An LMDB database directory (--lmdb_file) where each sequence is stored
+#     with its index as the key.
+#   - A metadata file (.meta.json) in the same location as the LMDB, used
+#     for caching the total sequence count to speed up subsequent runs.
+#
+# USAGE:
+#
+#   1. Default High-Performance (mmap) Mode:
+#      python fasta2lmdb.py \
+#          --fasta_file /path/to/uniref50.fasta \
+#          --lmdb_file /path/to/uniref50_lmdb \
+#          --processes 24
+#
+#   2. Robust Fallback (SeqIO) Mode:
+#      (Use if the default mode fails due to unusual FASTA formatting)
+#      python fasta2lmdb.py \
+#          --fasta_file /path/to/special.fasta \
+#          --lmdb_file /path/to/special_lmdb \
+#          --use_seqio
+#
+# ==============================================================================
 
 import argparse
 import json
@@ -15,8 +57,6 @@ from tqdm import tqdm
 # ==============================================================================
 #  解析器函数 (生产者部分，保持不变)
 # ==============================================================================
-
-# --- mmap 版本 ---
 
 
 def get_sequence_count_mmap(fasta_file: str, lmdb_file: str) -> int:
@@ -226,8 +266,8 @@ def writer_process(
     # 使用优化参数打开最终的LMDB文件
     env = lmdb.open(
         lmdb_file,
-        map_size=27 * 1024 * 1024 * 1024,  # 27GB，可根据你的最大预期大小调整
-        writemap=True,  # 关键性能优化
+        map_size=27 * 1024 * 1024 * 1024,  # 27GB
+        writemap=True,
         meminit=False,
         map_async=True,
     )
