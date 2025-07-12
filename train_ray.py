@@ -5,6 +5,10 @@ import ray
 import ray.train.huggingface.transformers
 import wandb
 import yaml
+from model.backbone.esm2ae import ESM2AE
+from model.dataloader.DataPipe import load_and_preprocess_data
+from model.utils.ModelSave import save_model
+from model.utils.MyLRCallback import LogLearningRateCallback
 from omegaconf import DictConfig, OmegaConf
 from ray.train import ScalingConfig
 from transformers import (
@@ -13,11 +17,6 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-
-from model.backbone.esm2ae import ESM2AE
-from model.dataloader.DataPipe import load_and_preprocess_data
-from model.utils.ModelSave import save_model
-from model.utils.MyLRCallback import LogLearningRateCallback
 
 
 def train_func(config: dict):
