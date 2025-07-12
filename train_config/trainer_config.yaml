@@ -5,7 +5,7 @@ wandb:
   resume: "allow"
 
 trainer:
-  output_dir: "./checkpoint"
+  output_dir: "/home/zhaolab/DataHD/AX/ESM2AE/checkpoint"
   save_strategy: "epoch"
   learning_rate: 5e-5
   per_device_train_batch_size: 16
@@ -15,7 +15,7 @@ trainer:
   data_seed: 42
   dataloader_num_workers: 12
   dataloader_prefetch_factor: 100
-  logging_dir: "./logs"
+  logging_dir: "/home/zhaolab/DataHD/AX/ESM2AE/logs"
   tf32: true
   bf16: true
   push_to_hub: false
@@ -24,7 +24,7 @@ trainer:
   adam_beta2: 0.95
   save_safetensors: true
   greater_is_better: false
-  load_best_model_at_end: false
+  load_best_model_at_end: true
   optim: "adamw_torch_fused"
   gradient_accumulation_steps: 1
   metric_for_best_model: "mse"
@@ -34,7 +34,7 @@ trainer:
   save_total_limit: 10
 
 data:
-  train_path: "data_test/train/"
+  train_path: "/home/zhaolab/DataHD/AX/ESM2AE/dataset"
   batch_size: 16
 
 model:
@@ -43,8 +43,9 @@ model:
   num_labels: 1
   problem_type: "regression"
 
-deepspeed_config_path: "train_config/ZERO2.yaml"
-
 ray:
   num_workers: 2
   use_gpu: true
+
+deepspeed:
+  config_path: "/home/zhaolab/DataHD/AX/ESM2AE/train_config/ZERO2.yaml"

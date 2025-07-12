@@ -25,7 +25,7 @@ def train_func(config: dict):
     cfg = OmegaConf.create(config)
 
     # Load DeepSpeed config
-    with open(cfg.deepspeed_config_path, "r") as f:
+    with open(cfg.deepspeed.config_path, "r") as f:
         ds_config = yaml.safe_load(f)
 
     # Initialize wandb on the main worker
@@ -49,7 +49,7 @@ def train_func(config: dict):
     model = ESM2AE(config)
 
     # Load and preprocess data
-    train_mdb_path = "./dataset/train_dataset"
+    train_mdb_path = cfg.data.train_path
     if not os.path.exists(train_mdb_path):
         raise FileNotFoundError(
             f"Training dataset path {train_mdb_path} does not exist."
@@ -85,7 +85,7 @@ def train_func(config: dict):
         warmup_ratio=cfg.trainer.warmup_ratio,
         lr_scheduler_type=cfg.trainer.lr_scheduler_type,
         save_total_limit=cfg.trainer.save_total_limit,
-        deepspeed=ds_config,
+        deepspeed=cfg.deepspeed.config_path,
     )
 
     # Define callbacks
@@ -120,11 +120,6 @@ def train_func(config: dict):
     version_base=None, config_path="./train_config", config_name="trainer_config"
 )
 def main(cfg: DictConfig):
-    # Print configuration
-    print("Configuration:")
-    print(OmegaConf.to_yaml(cfg))
-
-    # Initialize Ray
     ray.init()
 
     # Use Ray TorchTrainer instead of HuggingFaceTrainer
