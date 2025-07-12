@@ -1,28 +1,31 @@
+import os
+
 import hydra
+import ray
+import ray.train.huggingface.transformers
+import wandb
+import yaml
 from omegaconf import DictConfig, OmegaConf
+from ray.train import ScalingConfig
 from transformers import (
     AutoTokenizer,
     EsmConfig,
     Trainer,
     TrainingArguments,
 )
-import ray
-from ray.train.huggingface import HuggingFaceTrainer
-from ray.train import ScalingConfig
-import wandb
+
 from model.backbone.esm2ae import ESM2AE
 from model.dataloader.DataPipe import load_and_preprocess_data
 from model.utils.ModelSave import save_model
 from model.utils.MyLRCallback import LogLearningRateCallback
-import os
-import yaml
+
 
 def train_func(config: dict):
     """Training function to be executed by each Ray worker."""
     cfg = OmegaConf.create(config)
 
     # Load DeepSpeed config
-    with open(cfg.deepspeed_config_path, 'r') as f:
+    with open(cfg.deepspeed_config_path, "r") as f:
         ds_config = yaml.safe_load(f)
 
     # Initialize wandb on the main worker
@@ -86,7 +89,10 @@ def train_func(config: dict):
     )
 
     # Define callbacks
-    callbacks = [LogLearningRateCallback()]
+    callbacks = [
+        LogLearningRateCallback(),
+        ray.train.huggingface.transformers.RayTrainReportCallback(),
+    ]
 
     # Define Trainer
     trainer = Trainer(
@@ -96,7 +102,10 @@ def train_func(config: dict):
         tokenizer=tokenizer,
         callbacks=callbacks,
     )
-    
+
+    # Prepare trainer for Ray
+    trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
+
     # Start training
     trainer.train()
 
@@ -118,18 +127,27 @@ def main(cfg: DictConfig):
     # Initialize Ray
     ray.init()
 
-    # Define Ray HuggingFaceTrainer
-    ray_trainer = HuggingFaceTrainer(
-        trainer_init_per_worker=train_func,
-        trainer_init_config=OmegaConf.to_container(cfg, resolve=True),
+    # Use Ray TorchTrainer instead of HuggingFaceTrainer
+    from ray.train.torch import TorchTrainer
+
+    ray_trainer = TorchTrainer(
+        train_func,
+        train_loop_config=OmegaConf.to_container(cfg, resolve=True),
         scaling_config=ScalingConfig(
-            num_workers=cfg.ray.num_workers, 
-            use_gpu=cfg.ray.use_gpu
+            num_workers=cfg.ray.num_workers, use_gpu=cfg.ray.use_gpu
         ),
     )
 
     # Start training
     result = ray_trainer.fit()
+
+    # Optionally: Load the trained model from checkpoint
+    # with result.checkpoint.as_directory() as checkpoint_dir:
+    #     checkpoint_path = os.path.join(
+    #         checkpoint_dir,
+    #         ray.train.huggingface.transformers.RayTrainReportCallback.CHECKPOINT_NAME,
+    #     )
+    #     model = ESM2AE.from_pretrained(checkpoint_path)
 
     # Shutdown Ray
     ray.shutdown()
