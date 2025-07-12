@@ -1,20 +1,25 @@
 import argparse
-from tqdm import tqdm
 import os
 
-def filter_fasta_by_length(input_file, output_file, max_length=1024):
+from tqdm import tqdm
+
+
+def filter_fasta_by_length(input_file, output_file, max_length=1024, min_length=0):
     """
-    Filters a FASTA file to include only sequences with length less than or equal to a given length.
+    Filters a FASTA file to include only sequences with length within the specified range.
 
     Args:
         input_file (str): Path to the input FASTA file.
         output_file (str): Path to the output FASTA file.
         max_length (int): Maximum sequence length to include (inclusive).
+        min_length (int): Minimum sequence length to include (inclusive).
     """
     print(f"Starting to filter '{input_file}'...")
-    print(f"Sequences with length <= {max_length} residues will be saved to '{output_file}'.")
+    print(
+        f"Sequences with length between {min_length} and {max_length} residues will be saved to '{output_file}'."
+    )
 
-    with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
+    with open(input_file, "r") as infile, open(output_file, "w") as outfile:
         header = None
         sequence = []
         total_sequences = 0
@@ -22,22 +27,24 @@ def filter_fasta_by_length(input_file, output_file, max_length=1024):
 
         # Get file size for progress bar
         file_size = os.path.getsize(input_file)
-        
-        with tqdm(total=file_size, unit='B', unit_scale=True, desc="Processing") as pbar:
+
+        with tqdm(
+            total=file_size, unit="B", unit_scale=True, desc="Processing"
+        ) as pbar:
             for line in infile:
-                pbar.update(len(line.encode('utf-8')))
+                pbar.update(len(line.encode("utf-8")))
                 line = line.strip()
                 if not line:
                     continue
-                
-                if line.startswith('>'):
+
+                if line.startswith(">"):
                     total_sequences += 1
                     # Process the previous sequence
-                    if header and len("".join(sequence)) <= max_length:
-                        outfile.write(header + '\n')
-                        outfile.write("".join(sequence) + '\n')
+                    if header and min_length <= len("".join(sequence)) <= max_length:
+                        outfile.write(header + "\n")
+                        outfile.write("".join(sequence) + "\n")
                         kept_sequences += 1
-                    
+
                     # Start a new sequence
                     header = line
                     sequence = []
@@ -45,9 +52,9 @@ def filter_fasta_by_length(input_file, output_file, max_length=1024):
                     sequence.append(line)
 
             # Don't forget to process the last sequence in the file
-            if header and len("".join(sequence)) <= max_length:
-                outfile.write(header + '\n')
-                outfile.write("".join(sequence) + '\n')
+            if header and min_length <= len("".join(sequence)) <= max_length:
+                outfile.write(header + "\n")
+                outfile.write("".join(sequence) + "\n")
                 kept_sequences += 1
 
     print("\nFiltering complete.")
@@ -56,7 +63,7 @@ def filter_fasta_by_length(input_file, output_file, max_length=1024):
     print(f"Filtered file saved to: '{output_file}'")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Filter a FASTA file by sequence length."
     )
@@ -76,6 +83,14 @@ if __name__ == '__main__':
         default=1024,
         help="Maximum sequence length to keep (inclusive, default: 1024)",
     )
+    parser.add_argument(
+        "--min_length",
+        type=int,
+        default=0,
+        help="Minimum sequence length to keep (inclusive, default: 0)",
+    )
     args = parser.parse_args()
 
-    filter_fasta_by_length(args.input_fasta, args.output_fasta, args.max_length)
+    filter_fasta_by_length(
+        args.input_fasta, args.output_fasta, args.max_length, args.min_length
+    )
