@@ -7,7 +7,7 @@ from typing import Any, Dict, Iterator, List
 
 import lmdb
 import ray
-from datasets import Dataset, disable_progress_bar
+from datasets import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
@@ -86,9 +86,6 @@ def load_and_preprocess_data(train_mdb_path: str, tokenizer: AutoTokenizer) -> D
     except (ValueError, AttributeError):
         rank = 0
 
-    if rank != 0:
-        disable_progress_bar()
-
     # Suppress output during dataset generation
     with suppress_output(is_main_worker=(rank == 0)):
         train_dataset = Dataset.from_generator(
@@ -106,12 +103,15 @@ def load_and_preprocess_data(train_mdb_path: str, tokenizer: AutoTokenizer) -> D
         )
         return tokenized
 
+
+    num_proc_to_use = int(ray.get_runtime_context().get_assigned_resources()["CPU"])
     tokenized_train_dataset = train_dataset.map(
         preprocess_function,
         batched=True,
         remove_columns=train_dataset.column_names,
         desc="Tokenizing dataset",
-        disable_tqdm=(rank != 0),
+        disable_nullable=(rank != 0),
+        num_proc=num_proc_to_use, 
     )
 
     return tokenized_train_dataset
