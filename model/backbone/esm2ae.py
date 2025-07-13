@@ -1,12 +1,11 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers.models.esm.modeling_esm import EsmConfig, EsmModel, EsmPreTrainedModel
 
 from ..utils.ActivationFunction import SwiGLU
-from ..utils.Whitening import Whitening
-from ..utils.Simclr import Simclr_loss 
+from ..utils.Simclr import Simclr_loss
+
 
 class ESM2AE(EsmPreTrainedModel):
     def __init__(self, config: EsmConfig):
@@ -14,7 +13,7 @@ class ESM2AE(EsmPreTrainedModel):
         self.num_labels = config.num_labels
         self.config = config
         self.esm = EsmModel(config)
-        self.whitening = Whitening(config.hidden_size)
+        # self.whitening = Whitening(config.hidden_size)
 
         self.encoder = nn.Sequential(
             nn.Linear(config.hidden_size, 768),
@@ -59,7 +58,9 @@ class ESM2AE(EsmPreTrainedModel):
         return_dict=None,
         **kwargs,
     ):
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         # === branch 1 ===
         out1 = self.esm(
@@ -84,7 +85,11 @@ class ESM2AE(EsmPreTrainedModel):
         # === optional SimCLR branch ===
         contrastive_loss = 0.0
         if input_ids_2 is not None:
-            out2 = self.esm(input_ids=input_ids_2, attention_mask=attention_mask_2, return_dict=return_dict)
+            out2 = self.esm(
+                input_ids=input_ids_2,
+                attention_mask=attention_mask_2,
+                return_dict=return_dict,
+            )
             seq2 = out2[0][:, 0, :]
             centered2 = seq2 - seq2.mean(dim=-1, keepdim=True)
             norm2 = F.normalize(centered2, p=2, dim=-1)
