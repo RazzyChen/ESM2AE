@@ -3,12 +3,7 @@ import os
 import hydra
 import ray
 import ray.train.huggingface.transformers
-import wandb
 import yaml
-from model.backbone.esm2ae import ESM2AE
-from model.dataloader.DataPipe import load_and_preprocess_data
-from model.utils.ModelSave import save_model
-from model.utils.MyLRCallback import LogLearningRateCallback
 from omegaconf import DictConfig, OmegaConf
 from ray.train import ScalingConfig
 from transformers import (
@@ -17,6 +12,12 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+
+import wandb
+from model.backbone.esm2ae import ESM2AE
+from model.dataloader.DataPipe import load_and_preprocess_data
+from model.utils.ModelSave import save_model
+from model.utils.MyLRCallback import LogLearningRateCallback
 
 
 def train_func(config: dict):
@@ -32,6 +33,7 @@ def train_func(config: dict):
         wandb.init(
             project=cfg.wandb.project,
             resume=cfg.wandb.resume,
+            mode="offline",
             config=OmegaConf.to_container(cfg, resolve=True),
         )
 
@@ -84,7 +86,7 @@ def train_func(config: dict):
         warmup_ratio=cfg.trainer.warmup_ratio,
         lr_scheduler_type=cfg.trainer.lr_scheduler_type,
         save_total_limit=cfg.trainer.save_total_limit,
-        deepspeed=cfg.deepspeed.config_path,
+        deepspeed=ds_config,
     )
 
     # Define callbacks
@@ -128,7 +130,12 @@ def main(cfg: DictConfig):
         train_func,
         train_loop_config=OmegaConf.to_container(cfg, resolve=True),
         scaling_config=ScalingConfig(
-            num_workers=cfg.ray.num_workers, use_gpu=cfg.ray.use_gpu
+            num_workers=cfg.ray.num_workers, 
+            resources_per_worker={
+                "CPU": 11,
+                "GPU": 1,
+            },
+            use_gpu=cfg.ray.use_gpu
         ),
     )
 
