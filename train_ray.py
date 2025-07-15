@@ -4,6 +4,7 @@ import hydra
 import ray
 import ray.train.huggingface.transformers
 import yaml
+import torch
 from omegaconf import DictConfig, OmegaConf
 from ray.train import ScalingConfig
 from transformers import (
@@ -39,15 +40,17 @@ def train_func(config: dict):
 
     # Load configuration and tokenizer
     config = EsmConfig.from_pretrained(
-        "facebook/esm2_t33_650M_UR50D",
-        position_embedding_type="rotary",
-        num_labels=1,
-        problem_type="regression",
+        cfg.model.pretrained_model_name,
+        position_embedding_type=cfg.model.position_embedding_type,
+        num_labels=cfg.model.num_labels,
+        problem_type=cfg.model.problem_type,
+        attn_implementation=cfg.model.attn_implementation,
+        torch_dtype=torch.float16,
     )
-    tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t33_650M_UR50D")
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model.pretrained_model_name)
 
     # Initialize model
-    model = ESM2AE(config)
+    model = ESM2AE(config).cuda()
 
     # Load and preprocess data
     train_mdb_path = cfg.data.train_path
@@ -55,10 +58,13 @@ def train_func(config: dict):
         raise FileNotFoundError(
             f"Training dataset path {train_mdb_path} does not exist."
         )
-    tokenized_train_dataset = load_and_preprocess_data(train_mdb_path, tokenizer)
+    tokenized_train_dataset = load_and_preprocess_data(
+        train_mdb_path, tokenizer, cfg.data.cache_dir
+    )
 
     # Define TrainingArguments
     training_args = TrainingArguments(
+        gradient_checkpointing=True,
         output_dir=cfg.trainer.output_dir,
         save_strategy=cfg.trainer.save_strategy,
         learning_rate=cfg.trainer.learning_rate,
@@ -130,12 +136,12 @@ def main(cfg: DictConfig):
         train_func,
         train_loop_config=OmegaConf.to_container(cfg, resolve=True),
         scaling_config=ScalingConfig(
-            num_workers=cfg.ray.num_workers, 
+            num_workers=cfg.ray.num_workers,
             resources_per_worker={
                 "CPU": 11,
                 "GPU": 1,
             },
-            use_gpu=cfg.ray.use_gpu
+            use_gpu=cfg.ray.use_gpu,
         ),
     )
 

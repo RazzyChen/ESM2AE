@@ -8,25 +8,26 @@ trainer:
   output_dir: "/home/zhaolab/DataHD/AX/ESM2AE/checkpoint"
   save_strategy: "epoch"
   learning_rate: 5e-5
-  per_device_train_batch_size: 16
-  per_device_eval_batch_size: 16
+  per_device_train_batch_size: 8
+  per_device_eval_batch_size: 8
   num_train_epochs: 100
   seed: 42
   data_seed: 42
   dataloader_num_workers: 12
   dataloader_prefetch_factor: 100
   logging_dir: "/home/zhaolab/DataHD/AX/ESM2AE/logs"
-  tf32: true
-  bf16: true
+  tf32: false
+  fp16: true
+  bf16: false
   push_to_hub: false
   report_to: "wandb"
   weight_decay: 1e-4
   adam_beta2: 0.95
   save_safetensors: true
   greater_is_better: false
-  load_best_model_at_end: true
+  load_best_model_at_end: false
   optim: "adamw_torch_fused"
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 4
   metric_for_best_model: "mse"
   logging_steps: 10
   warmup_ratio: 0.1
@@ -35,10 +36,12 @@ trainer:
 
 data:
   train_path: "/home/zhaolab/DataHD/AX/ESM2AE/dataset"
-  batch_size: 16
+  cache_dir: "/home/zhaolab/DataHD/AX/ESM2AE/tokenizer_cache"
 
 model:
   pretrained_model_name: "facebook/esm2_t33_650M_UR50D"
+  attn_implementation: "flash_attention_2"
+  # attn_implementation: "sdpa"
   position_embedding_type: "rotary"
   num_labels: 1
   problem_type: "regression"
@@ -48,4 +51,4 @@ ray:
   use_gpu: true
 
 deepspeed:
-  config_path: "/home/zhaolab/DataHD/AX/ESM2AE/train_config/ZERO2.yaml"
+  config_path: "/home/zhaolab/DataHD/AX/ESM2AE/train_config/ZERO2_FP16.yaml"

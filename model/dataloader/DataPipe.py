@@ -77,10 +77,17 @@ def _dataset_generator(mdb_file_path: str) -> Iterator[Dict[str, Any]]:
                             pbar.update(1)
 
 
-def load_and_preprocess_data(train_mdb_path: str, tokenizer: AutoTokenizer) -> Dataset:
+def load_and_preprocess_data(
+    train_mdb_path: str, tokenizer: AutoTokenizer, cache_dir: str
+) -> Dataset:
     """
     Load and preprocess the training dataset from an LMDB file in a memory-efficient way.
+    Caches the tokenized dataset to disk if a cache_dir is provided.
     """
+    if os.path.exists(cache_dir):
+        print(f"Loading tokenized dataset from cache: {cache_dir}")
+        return Dataset.load_from_disk(cache_dir)
+
     try:
         rank = ray.train.get_context().get_world_rank()
     except (ValueError, AttributeError):
@@ -103,7 +110,6 @@ def load_and_preprocess_data(train_mdb_path: str, tokenizer: AutoTokenizer) -> D
         )
         return tokenized
 
-
     num_proc_to_use = int(ray.get_runtime_context().get_assigned_resources()["CPU"])
     tokenized_train_dataset = train_dataset.map(
         preprocess_function,
@@ -111,7 +117,11 @@ def load_and_preprocess_data(train_mdb_path: str, tokenizer: AutoTokenizer) -> D
         remove_columns=train_dataset.column_names,
         desc="Tokenizing dataset",
         disable_nullable=(rank != 0),
-        num_proc=num_proc_to_use, 
+        num_proc=num_proc_to_use,
     )
+
+    if rank == 0:
+        print(f"Saving tokenized dataset to cache: {cache_dir}")
+        tokenized_train_dataset.save_to_disk(cache_dir)
 
     return tokenized_train_dataset
