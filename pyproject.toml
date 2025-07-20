@@ -23,6 +23,7 @@ dependencies = [
     "nvitop>=1.5.1",
     "pandas>=2.2.3",
     "peft>=0.15.2",
+    "ray>=2.48.0",
     "rdkit>=2025.3.2",
     "scikit-learn>=1.6.1",
     "torchmetrics>=1.7.2",
