@@ -25,6 +25,7 @@ dependencies = [
     "torch>=2.1.0",
     "transformers>=4.34.0",
     "wandb>=0.15.12",
+    "uv>=0.2.0",
     "webdataset>=0.2.85", # Added webdataset
 ]
 
