@@ -9,6 +9,7 @@ from omegaconf import DictConfig, OmegaConf
 from ray.train import ScalingConfig
 from transformers import (
     AutoTokenizer,
+    DataCollatorWithPadding,
     EsmConfig,
     Trainer,
     TrainingArguments,
@@ -48,21 +49,16 @@ def train_func(config: dict):
         torch_dtype=torch.float16,
     )
     tokenizer = AutoTokenizer.from_pretrained(cfg.model.pretrained_model_name)
+    # Add padding token if it does not exist
+    if tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
     # Initialize model
     model = ESM2AE(config).cuda()
+    # Resize token embeddings to accommodate the new padding token
+    model.resize_token_embeddings(len(tokenizer))
 
-    # Load and preprocess data
-    train_mdb_path = cfg.data.train_path
-    if not os.path.exists(train_mdb_path):
-        raise FileNotFoundError(
-            f"Training dataset path {train_mdb_path} does not exist."
-        )
-    tokenized_train_dataset = load_and_preprocess_data(
-        train_mdb_path, tokenizer, cfg.data.cache_dir
-    )
-
-    # Define TrainingArguments
+    # Define TrainingArguments first to access batch size
     training_args = TrainingArguments(
         gradient_checkpointing=True,
         output_dir=cfg.trainer.output_dir,
@@ -95,6 +91,21 @@ def train_func(config: dict):
         deepspeed=ds_config,
     )
 
+    # Load and preprocess data using WebDataset with bucketing
+    train_webdataset_path = cfg.data.train_path
+    if not os.path.isdir(train_webdataset_path):
+        raise FileNotFoundError(
+            f"Training WebDataset path {train_webdataset_path} does not exist or is not a directory."
+        )
+    train_dataset = load_and_preprocess_data(
+        train_webdataset_path=train_webdataset_path,
+        tokenizer=tokenizer,
+        batch_size=training_args.per_device_train_batch_size,
+    )
+
+    # Initialize Data Collator for dynamic padding
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+
     # Define callbacks
     callbacks = [
         LogLearningRateCallback(),
@@ -105,8 +116,9 @@ def train_func(config: dict):
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=tokenized_train_dataset,
+        train_dataset=train_dataset,
         tokenizer=tokenizer,
+        data_collator=data_collator,  # Add the data collator here
         callbacks=callbacks,
     )
 

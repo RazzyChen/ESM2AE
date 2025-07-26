@@ -1,119 +1,94 @@
-# ESM2AE: 基于ESM2的蛋白质序列自编码器
+# ESM2AE: An Autoencoder for Protein Sequences based on ESM-2
 
-ESM2AE是一个利用强大的ESM2蛋白质语言模型构建的自监督学习框架。它通过训练一个自编码器来重建ESM2的表征，从而学习蛋白质序列的紧凑且信息丰富的潜在表示。
+ESM2AE is a self-supervised learning framework built upon the powerful ESM-2 protein language model. It learns compact and informative latent representations of protein sequences by training an autoencoder to reconstruct ESM-2's own representations.
 
-## 核心特性
+## Key Features
 
-- **ESM2主干**: 利用预训练的ESM2模型 (`facebook/esm2_t33_650M_UR50D`) 作为强大的特征提取器。
-- **自编码器结构**: 包含一个编码器和一个解码器，均由线性层和SwiGLU激活函数构成，用于将ESM2的高维输出压缩至低维潜在空间并重建。
-- **自监督学习**: 训练过程完全自监督，通过最小化重建表征与原始ESM2表征之间的均方误差（MSE）进行优化。
-- **分布式训练**: 支持使用 `Accelerate` 和 `Ray` 进行高效的分布式训练，并集成了 `DeepSpeed` (ZERO-2) 进行显存优化。
-- **SimCLR对比损失 (可选)**: 模型中包含了SimCLR的实现 (`model/utils/Simclr.py`)，可以轻松扩展以引入对比学习，进一步提升表征质量。
+- **ESM-2 Backbone**: Leverages a pre-trained ESM-2 model (e.g., `facebook/esm2_t6_8M_UR50D`) as a powerful feature extractor.
+- **Autoencoder Architecture**: Compresses high-dimensional ESM-2 outputs into a low-dimensional latent space and reconstructs them, using an efficient architecture of Linear layers and SwiGLU activations.
+- **Efficient Data Handling**: Utilizes **WebDataset** for true streaming of large datasets, eliminating the need to load everything into memory. It intelligently handles variable-length sequences by implementing **bucketing and dynamic padding**, which significantly reduces computational overhead from excessive padding.
+- **Distributed Training**: Natively supports high-performance distributed training using **Ray Train** and is optimized for memory efficiency with **DeepSpeed (ZERO-2)**.
+- **Self-Supervised**: The training is entirely self-supervised, optimized by minimizing the Mean Squared Error (MSE) between the reconstructed and original ESM-2 representations.
 
-## 项目结构
+## Project Structure
 
 ```
 ESM2AE/
-├── model/                # 模型定义
-│   ├── backbone/         # 核心模型结构 (ESM2AE)
-│   ├── dataloader/       # 数据加载器 (LMDB)
-│   └── utils/            # 辅助工具 (模型保存, SimCLR)
-├── tools/                # 数据预处理脚本
-│   ├── csv2fasta.py      # CSV转FASTA
-│   ├── fasta_filter.py   # 按长度过滤FASTA
-│   ├── fasta2lmdb.py     # FASTA转LMDB (核心)
-│   ├── remove_duplicates.py # 去重
-│   └── sequence_analysis.py # 序列分析
-├── train_config/         # 训练配置文件
-│   ├── trainer_config.yaml # 主训练配置 (Hydra)
-│   └── ZERO2.yaml        # DeepSpeed配置
-├── train_ray.py          # 使用Ray进行分布式训练的脚本
-└── README.md             # 项目说明
+├── model/                     # Model definitions
+│   ├── backbone/              # Core model architecture (ESM2AE)
+│   ├── dataloader/            # Data loading pipeline (WebDataset)
+│   └── utils/                 # Helpers (Model Saving, Callbacks)
+├── tools/                     # Data preprocessing scripts
+│   ├── fasta2webdataset.py    # Converts FASTA to WebDataset format (Core)
+│   ├── fasta_filter.py        # Filters FASTA by sequence length
+│   ├── csv2fasta.py           # Converts CSV to FASTA
+│   └── ...
+├── train_config/              # Training configurations
+│   ├── trainer_config.yaml    # Main training config (Hydra)
+│   └── ZERO2.yaml             # DeepSpeed config
+├── train_ray.py               # Main script for distributed training with Ray
+└── README.md                  # This file
 ```
 
-## 环境准备
+## Setup
 
-建议使用 `uv` 或 `pip` 来管理依赖。
+It is recommended to use `uv` for fast dependency management.
 
 ```bash
-# 推荐使用uv
-pip install uv
-uv pip install -r requirements.txt
+# Install uv (if you haven't already)
+# pip install uv
 
-# 或者使用pip
-pip install -r requirements.txt
+# Create a virtual environment and install dependencies
+uv venv
+uv pip install -r requirements.txt
 ```
 
-## 数据准备流程
+## Data Preparation
 
-训练数据需要处理成LMDB格式以实现高效读取。
+The training data must be converted to the WebDataset format for efficient streaming. This new format avoids the need for a large, single-file database and is ideal for cloud and distributed environments.
 
-1. **准备FASTA文件**:
-   如果你的原始数据是CSV格式，可以使用 `csv2fasta.py` 将其转换为FASTA格式。
-   ```bash
-   python tools/csv2fasta.py your_data.csv your_data.fasta
-   ```
+1.  **Prepare a FASTA file**:
+    Ensure you have a single FASTA file containing all your protein sequences. You can use `tools/csv2fasta.py` or `tools/remove_duplicates.py` to clean your source data.
 
-2. **(可选) 过滤序列**:
-   为了避免超长序列带来的显存问题，可以过滤掉长度超过特定阈值的序列（默认为1024）。
-   ```bash
-   python tools/fasta_filter.py your_data.fasta filtered.fasta --max_length 1024
-   ```
+2.  **Convert FASTA to WebDataset**:
+    This is the core preparation step. The `fasta2webdataset.py` script efficiently converts your FASTA file into a directory of `.tar` files (shards), which is the WebDataset format. This script uses a multi-process producer-consumer model to handle terabyte-scale files.
 
-3. **转换为LMDB格式**:
-   这是最关键的一步。使用 `fasta2lmdb.py` 脚本将FASTA文件转换为LMDB数据库。该脚本经过优化，支持多进程处理。
-   ```bash
-   # 创建输出目录
-   mkdir -p dataset
+    ```bash
+    # Define paths
+    FASTA_FILE="/path/to/your/protein.fasta"
+    OUTPUT_DIR="./data/protein_webdataset"
 
-   # 运行转换脚本
-   python tools/fasta2lmdb.py \
-       --fasta_file filtered.fasta \
-       --lmdb_file ./dataset/train_dataset \
-       --processes 4  # 根据你的CPU核心数调整
-   ```
+    # Create output directory
+    mkdir -p $OUTPUT_DIR
 
-## 训练模型
+    # Run the conversion script
+    python tools/fasta2webdataset.py \
+        --fasta_file $FASTA_FILE \
+        --output_dir $OUTPUT_DIR \
+        --processes 8  # Adjust based on your CPU cores
+    ```
+    After running, `$OUTPUT_DIR` will contain multiple `shard-xxxxxx.tar` files.
 
-项目支持两种分布式训练方式：`Accelerate` 和 `Ray`。
+## Training
 
-### 使用 Ray + DeepSpeed (推荐)
+The project is configured for distributed training on a cluster using Ray, Hydra, and DeepSpeed.
 
-`train_ray.py` 脚本集成了Ray、Hydra和DeepSpeed，提供了强大的分布式训练能力。
+### Configuration
 
-**配置**:
-- **`train_config/trainer_config.yaml`**: 配置学习率、批大小、周期数等超参数。
-- **`train_config/ZERO2.yaml`**: DeepSpeed配置文件，用于显存优化。
-- **`ray`**: 在 `trainer_config.yaml` 中配置Ray的worker数量。
+-   **`train_config/trainer_config.yaml`**: This is the main configuration file. **Crucially, you must update the `data.train_path` to point to the directory containing your WebDataset shards** (e.g., `./data/protein_webdataset`). You can also configure hyperparameters like learning rate, batch size, and epochs here.
+-   **`train_config/ZERO2.yaml`**: The DeepSpeed configuration for memory optimization.
+-   **Ray Setup**: The number of workers for distributed training is set in `trainer_config.yaml` under the `ray` section.
 
-**启动训练**:
+### Launching the Training Job
+
+With your configuration set, start the training by running the `train_ray.py` script. It will automatically initialize the Ray cluster and distribute the workload.
+
 ```bash
 python train_ray.py
 ```
 
-### 使用 Accelerate + DeepSpeed
+## Monitoring
 
-如果你更熟悉 `Accelerate`，也可以使用它来启动训练。
+Training progress is logged using `wandb`. Ensure you have set your project details in `train_config/trainer_config.yaml` to enable logging.
 
-**配置**:
-首先，配置 `Accelerate`：
-```bash
-accelerate config
 ```
-根据提示选择 `DEEPSPEED` 并配置相关参数，或者直接使用项目提供的 `train_config/ZERO2.yaml`。
-
-**启动训练**:
-```bash
-accelerate launch --config_file ./train_config/ZERO2.yaml train_ray.py
-```
-*注意：`train_ray.py` 脚本同时兼容 `accelerate` 和 `ray` 的启动方式。*
-
-## 监控
-
-训练过程通过 `wandb` 进行监控。请确保在 `train_config/trainer_config.yaml` 中设置好你的 `wandb` 项目名称。
-
-## 工具脚本说明
-
-- **`tools/sequence_analysis.py`**: 分析序列数据集的长度分布、token数量等，并生成图表。
-- **`tools/lmdb_read.py`**: 用于检查和验证生成的LMDB数据库。
-- **`tools/remove_duplicates.py`**: 从CSV文件中移除重复的序列。

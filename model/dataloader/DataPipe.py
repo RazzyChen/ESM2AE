@@ -1,14 +1,11 @@
-import json
 import os
-import pickle
 import sys
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List
 
-import lmdb
 import ray
-from datasets import Dataset
-from tqdm import tqdm
+import webdataset as wds
+from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer
 
 
@@ -28,100 +25,83 @@ def suppress_output(is_main_worker):
             sys.stdout, sys.stderr = old_stdout, old_stderr
 
 
-def _dataset_generator(mdb_file_path: str) -> Iterator[Dict[str, Any]]:
+def preprocess_function(example: Dict[str, Any], tokenizer: AutoTokenizer) -> Dict[str, Any]:
     """
-    A generator that yields data entries from an LMDB file with a progress bar
-    on the main worker.
+    Tokenize a single example *without* padding.
+    Padding will be handled dynamically by the DataCollator.
     """
-    try:
-        rank = ray.train.get_context().get_world_rank()
-    except (ValueError, AttributeError):
-        rank = 0
+    # The sequence is expected to be in bytes, so we decode it first.
+    sequence = " " + example["fasta"].decode("utf-8")
+    # IMPORTANT: No padding here. `padding=False` is the default.
+    tokenized = tokenizer(
+        sequence,
+        truncation=True,  # Still truncate to a max sensible length
+        max_length=1024, # Increased max_length slightly
+    )
+    return {"input_ids": tokenized["input_ids"], "attention_mask": tokenized["attention_mask"]}
 
-    # Suppress all output from non-main workers
-    with suppress_output(is_main_worker=(rank == 0)):
-        with lmdb.open(
-            mdb_file_path, readonly=True, lock=False, readahead=False, meminit=False
-        ) as env:
-            num_examples = env.stat()["entries"]
-            with env.begin() as txn:
-                cursor = txn.cursor()
 
-                pbar = tqdm(
-                    total=num_examples,
-                    desc="Generating dataset",
-                    disable=(rank != 0),
-                )
+class WebDatasetIterable(IterableDataset):
+    def __init__(self, urls: List[str], tokenizer: AutoTokenizer, batch_size: int):
+        super().__init__()
+        self.urls = urls
+        self.tokenizer = tokenizer
+        self.batch_size = batch_size
+        # Number of buckets. A larger number means better length grouping but
+        # might reduce randomness. 300 is a reasonable starting point.
+        self.nbuckets = 300
 
-                with pbar:
-                    for key, value in cursor:
-                        try:
-                            try:
-                                entry = json.loads(value.decode("utf-8"))
-                            except (UnicodeDecodeError, json.JSONDecodeError):
-                                entry = pickle.loads(value)
+        try:
+            self.rank = ray.train.get_context().get_world_rank()
+        except (ValueError, AttributeError):
+            self.rank = 0
 
-                            if (
-                                isinstance(entry, dict)
-                                and "sequence" in entry
-                                and isinstance(entry.get("sequence"), str)
-                            ):
-                                yield {"sequence": entry["sequence"]}
+    def __iter__(self) -> Iterator[Dict[str, Any]]:
+        with suppress_output(is_main_worker=(self.rank == 0)):
+            # Define a function to extract sequence length for bucketing
+            # This operates on the raw data *before* tokenization for efficiency
+            def get_length(x):
+                return len(x["fasta"])
 
-                        except Exception as e:
-                            if rank == 0:
-                                print(
-                                    f"Skipping invalid entry with key {key.decode('ascii', errors='ignore')}: {e}"
-                                )
-                        finally:
-                            pbar.update(1)
+            dataset = wds.WebDataset(self.urls, nodesplitter=wds.split_by_node, shardshuffle=True)
+            
+            # IMPORTANT: Add bucketing right after the source
+            # This groups samples by length before they are shuffled and batched.
+            dataset = dataset.bucket(
+                self.nbuckets, 
+                self.batch_size, 
+                sorter=get_length
+            )
+
+            # Now, shuffle, decode, and tokenize as before
+            dataset = dataset.shuffle(1000).decode()
+            dataset = dataset.map(lambda x: preprocess_function(x, self.tokenizer))
+
+            for item in dataset:
+                yield item
 
 
 def load_and_preprocess_data(
-    train_mdb_path: str, tokenizer: AutoTokenizer, cache_dir: str
-) -> Dataset:
+    train_webdataset_path: str, tokenizer: AutoTokenizer, batch_size: int, **kwargs
+) -> WebDatasetIterable:
     """
-    Load and preprocess the training dataset from an LMDB file in a memory-efficient way.
-    Caches the tokenized dataset to disk if a cache_dir is provided.
+    Load and preprocess data using WebDataset with length-based bucketing.
     """
-    if os.path.exists(cache_dir):
-        print(f"Loading tokenized dataset from cache: {cache_dir}")
-        return Dataset.load_from_disk(cache_dir)
-
-    try:
-        rank = ray.train.get_context().get_world_rank()
-    except (ValueError, AttributeError):
-        rank = 0
-
-    # Suppress output during dataset generation
-    with suppress_output(is_main_worker=(rank == 0)):
-        train_dataset = Dataset.from_generator(
-            _dataset_generator,
-            gen_kwargs={"mdb_file_path": train_mdb_path},
+    if not os.path.isdir(train_webdataset_path):
+        raise FileNotFoundError(
+            f"WebDataset path not found or is not a directory: {train_webdataset_path}"
         )
 
-    def preprocess_function(examples: Dict[str, List[str]]) -> Dict[str, List[Any]]:
-        sequences = [" " + seq for seq in examples["sequence"]]
-        tokenized = tokenizer(
-            sequences,
-            padding="max_length",
-            truncation=True,
-            max_length=700,
+    urls = [
+        os.path.join(train_webdataset_path, f)
+        for f in os.listdir(train_webdataset_path)
+        if f.endswith(".tar")
+    ]
+    if not urls:
+        raise FileNotFoundError(
+            f"No .tar shards found in directory: {train_webdataset_path}"
         )
-        return tokenized
+    
+    print(f"Found {len(urls)} WebDataset shards. Initializing with bucketing.")
 
-    num_proc_to_use = int(ray.get_runtime_context().get_assigned_resources()["CPU"])
-    tokenized_train_dataset = train_dataset.map(
-        preprocess_function,
-        batched=True,
-        remove_columns=train_dataset.column_names,
-        desc="Tokenizing dataset",
-        disable_nullable=(rank != 0),
-        num_proc=num_proc_to_use,
-    )
-
-    if rank == 0:
-        print(f"Saving tokenized dataset to cache: {cache_dir}")
-        tokenized_train_dataset.save_to_disk(cache_dir)
-
-    return tokenized_train_dataset
+    return WebDatasetIterable(urls, tokenizer, batch_size)
