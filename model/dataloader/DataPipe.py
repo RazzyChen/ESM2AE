@@ -42,14 +42,10 @@ def preprocess_function(example: Dict[str, Any], tokenizer: AutoTokenizer) -> Di
 
 
 class WebDatasetIterable(IterableDataset):
-    def __init__(self, urls: List[str], tokenizer: AutoTokenizer, batch_size: int):
+    def __init__(self, urls: List[str], tokenizer: AutoTokenizer):
         super().__init__()
         self.urls = urls
         self.tokenizer = tokenizer
-        self.batch_size = batch_size
-        # Number of buckets. A larger number means better length grouping but
-        # might reduce randomness. 300 is a reasonable starting point.
-        self.nbuckets = 300
 
         try:
             self.rank = ray.train.get_context().get_world_rank()
@@ -58,22 +54,9 @@ class WebDatasetIterable(IterableDataset):
 
     def __iter__(self) -> Iterator[Dict[str, Any]]:
         with suppress_output(is_main_worker=(self.rank == 0)):
-            # Define a function to extract sequence length for bucketing
-            # This operates on the raw data *before* tokenization for efficiency
-            def get_length(x):
-                return len(x["fasta"])
-
             dataset = wds.WebDataset(self.urls, nodesplitter=wds.split_by_node, shardshuffle=True)
             
-            # IMPORTANT: Add bucketing right after the source
-            # This groups samples by length before they are shuffled and batched.
-            dataset = dataset.bucket(
-                self.nbuckets, 
-                self.batch_size, 
-                sorter=get_length
-            )
-
-            # Now, shuffle, decode, and tokenize as before
+            # Shuffle, decode, and tokenize
             dataset = dataset.shuffle(1000).decode()
             dataset = dataset.map(lambda x: preprocess_function(x, self.tokenizer))
 
@@ -82,10 +65,10 @@ class WebDatasetIterable(IterableDataset):
 
 
 def load_and_preprocess_data(
-    train_webdataset_path: str, tokenizer: AutoTokenizer, batch_size: int, **kwargs
+    train_webdataset_path: str, tokenizer: AutoTokenizer, **kwargs
 ) -> WebDatasetIterable:
     """
-    Load and preprocess data using WebDataset with length-based bucketing.
+    Load and preprocess data using WebDataset.
     """
     if not os.path.isdir(train_webdataset_path):
         raise FileNotFoundError(
@@ -102,6 +85,6 @@ def load_and_preprocess_data(
             f"No .tar shards found in directory: {train_webdataset_path}"
         )
     
-    print(f"Found {len(urls)} WebDataset shards. Initializing with bucketing.")
+    print(f"Found {len(urls)} WebDataset shards. Initializing.")
 
-    return WebDatasetIterable(urls, tokenizer, batch_size)
+    return WebDatasetIterable(urls, tokenizer)

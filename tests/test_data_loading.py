@@ -41,23 +41,19 @@ class TestDataLoading:
         """Clean up the temporary directory after tests."""
         shutil.rmtree(self.test_dir)
 
-    def test_data_loading_and_bucketing(self):
-        """Test that the WebDataset is loaded correctly with bucketing and dynamic padding."""
+    def test_data_loading_and_padding(self):
+        """Test that the WebDataset is loaded correctly and that samples can be dynamically padded."""
         batch_size = 4
         # Load the dataset using our pipeline
         dataset = load_and_preprocess_data(
             train_webdataset_path=self.webdataset_path,
-            tokenizer=self.tokenizer,
-            batch_size=batch_size
+            tokenizer=self.tokenizer
         )
 
         # Create a data collator for dynamic padding
         data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
 
-        # Create a PyTorch DataLoader
-        # Note: For IterableDataset, batching is often handled within the dataset itself
-        # or by a custom batching mechanism. Here we will manually batch for testing.
-        
+        # Note: For an IterableDataset, we manually pull samples to test the collator.
         iterator = iter(dataset)
         # Collect a few samples to form a batch
         samples = [next(iterator) for _ in range(batch_size)]
