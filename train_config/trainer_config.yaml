@@ -59,7 +59,7 @@ trainer:
 data:
   train_path: "/home/zhaolab/DataHD/AX/ESM2AE/dataset"
   cache_dir: "/home/zhaolab/DataHD/AX/ESM2AE/tokenizer_cache"
-  max_length: 512  # Reduced from 700 for better performance
+  max_length: 512  # 固定序列长度
   batch_size: 2000  # Batch size for dataset preprocessing
   preprocessing_num_proc: 8  # Number of processes for data preprocessing
 
@@ -98,3 +98,4 @@ performance:
   monitor_gpu_usage: true
   monitor_memory_usage: true
   profile_data_loading: false  # Set to true for debugging data loading
+  benchmark_mode: false  # Set to true for performance benchmarking

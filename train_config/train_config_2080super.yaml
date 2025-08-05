@@ -11,7 +11,7 @@ trainer:
   save_strategy: "steps"
   save_steps: 1000  # 减少保存频率以节省I/O时间
   learning_rate: 8e-5  # 降低学习率，因为批次较小
-  per_device_train_batch_size: 8  # 8G显存的安全批次大小
+  per_device_train_batch_size: 6  # 512序列长度下8G显存的安全批次大小
   per_device_eval_batch_size: 16
   num_train_epochs: 100
   seed: 42
@@ -37,7 +37,7 @@ trainer:
   greater_is_better: false
   load_best_model_at_end: false
   optim: "adamw_torch"  # 不使用fused版本以确保兼容性
-  gradient_accumulation_steps: 4  # 增加梯度累积补偿小批次
+  gradient_accumulation_steps: 6  # 增加梯度累积补偿小批次
   metric_for_best_model: "train_loss"
   logging_steps: 50
   warmup_ratio: 0.03  # 减少warmup比例
@@ -66,7 +66,7 @@ trainer:
 data:
   train_path: "/home/zhaolab/DataHD/AX/ESM2AE/dataset"
   cache_dir: "/home/zhaolab/DataHD/AX/ESM2AE/tokenizer_cache"
-  max_length: 384  # 进一步减少序列长度以节省内存
+  max_length: 512  # 固定序列长度
   batch_size: 4000  # 利用64G RAM增加预处理批次
   preprocessing_num_proc: 12  # 利用大内存增加预处理进程
 
@@ -111,6 +111,7 @@ performance:
   monitor_gpu_usage: true
   monitor_memory_usage: true
   profile_data_loading: false
+  benchmark_mode: false  # 设为true启用性能基准测试
   
 # 2080 Super特定优化
 hardware_specific:

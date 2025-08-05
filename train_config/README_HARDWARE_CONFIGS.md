@@ -18,9 +18,9 @@
 
 #### 性能参数
 ```yaml
-per_device_train_batch_size: 8      # 8G显存安全批次
-gradient_accumulation_steps: 4      # 补偿小批次大小
-max_length: 384                     # 减少序列长度节省显存
+per_device_train_batch_size: 6      # 512序列长度下8G显存安全批次
+gradient_accumulation_steps: 6      # 补偿小批次大小
+max_length: 512                     # 固定序列长度
 dataloader_num_workers: 16          # 利用64G RAM
 ```
 
@@ -200,14 +200,17 @@ iftop
 wandb
 ```
 
-#### 性能监控
+#### 性能基准测试
 ```bash
 # 启动训练并监控性能
 python3 train.py --config train_config/train_config_2080super.yaml
 
-# 预期性能指标:
-# 2080 Super x2: ~1000 tokens/sec
-# 3080 x1: ~800 tokens/sec (但延迟更低)
+# 启用基准测试模式
+# 在配置文件中设置: performance.benchmark_mode: true
+
+# 预期性能指标 (序列长度512):
+# 2080 Super x2: ~800 tokens/sec
+# 3080 x1: ~900 tokens/sec (更高效的架构)
 ```
 
 ## 配置文件详解
