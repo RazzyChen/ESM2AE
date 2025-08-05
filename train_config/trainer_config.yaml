@@ -1,54 +1,101 @@
-# Configuration file for ESM2AE project
+# Optimized Configuration file for ESM2AE project
 
 wandb:
-  project: "ESM2AE"
+  project: "ESM2AE-Optimized"
   resume: "allow"
 
 trainer:
   output_dir: "/home/zhaolab/DataHD/AX/ESM2AE/checkpoint"
-  save_strategy: "epoch"
-  learning_rate: 5e-5
-  per_device_train_batch_size: 8
-  per_device_eval_batch_size: 8
+  save_strategy: "steps"  # Changed to steps for better control
+  save_steps: 500  # Save every 500 steps
+  learning_rate: 1e-4  # Slightly increased for faster convergence
+  per_device_train_batch_size: 16  # Increased batch size for better GPU utilization
+  per_device_eval_batch_size: 32  # Larger eval batch size
   num_train_epochs: 100
   seed: 42
   data_seed: 42
-  dataloader_num_workers: 12
-  dataloader_prefetch_factor: 100
+  dataloader_num_workers: 16  # Increased for better data loading throughput
+  dataloader_prefetch_factor: 4  # Reduced to save memory while maintaining performance
+  dataloader_pin_memory: true  # Enable pin memory for faster GPU transfer
+  dataloader_drop_last: true  # Drop last incomplete batch for consistent performance
   logging_dir: "/home/zhaolab/DataHD/AX/ESM2AE/logs"
-  tf32: false
-  fp16: true
-  bf16: false
+  tf32: true  # Enable TF32 for better performance on modern GPUs
+  fp16: false  # Disabled in favor of bf16
+  bf16: true  # Better numerical stability than fp16
   push_to_hub: false
   report_to: "wandb"
   weight_decay: 1e-4
+  adam_beta1: 0.9  # Explicitly set beta1
   adam_beta2: 0.95
+  adam_epsilon: 1e-8  # Explicitly set epsilon
   save_safetensors: true
   greater_is_better: false
   load_best_model_at_end: false
-  optim: "adamw_torch_fused"
-  gradient_accumulation_steps: 4
-  metric_for_best_model: "mse"
-  logging_steps: 10
-  warmup_ratio: 0.1
-  lr_scheduler_type: "linear"
-  save_total_limit: 10
+  optim: "adamw_torch_fused"  # Use fused optimizer for better performance
+  gradient_accumulation_steps: 2  # Reduced for faster feedback
+  metric_for_best_model: "train_loss"  # Changed to train_loss since we don't have eval
+  logging_steps: 20  # More frequent logging
+  warmup_ratio: 0.05  # Reduced warmup for faster training start
+  lr_scheduler_type: "cosine"  # Better learning rate schedule
+  save_total_limit: 5  # Reduced to save disk space
+  max_steps: -1  # Let it run for full epochs
+  eval_steps: 1000  # Evaluation frequency
+  evaluation_strategy: "no"  # Disable evaluation for self-supervised training
+  
+  # Performance optimizations
+  group_by_length: true  # Group sequences by length for better batching
+  length_column_name: "length"
+  remove_unused_columns: false
+  prediction_loss_only: true
+  skip_memory_metrics: true  # Skip memory metrics for better performance
+  
+  # Gradient and optimization settings
+  max_grad_norm: 1.0  # Gradient clipping
+  gradient_checkpointing: true  # Enable for memory efficiency
+  
+  # I/O optimizations
+  dataloader_persistent_workers: true  # Keep workers alive between epochs
 
 data:
   train_path: "/home/zhaolab/DataHD/AX/ESM2AE/dataset"
   cache_dir: "/home/zhaolab/DataHD/AX/ESM2AE/tokenizer_cache"
+  max_length: 512  # Reduced from 700 for better performance
+  batch_size: 2000  # Batch size for dataset preprocessing
+  preprocessing_num_proc: 8  # Number of processes for data preprocessing
 
 model:
   pretrained_model_name: "facebook/esm2_t33_650M_UR50D"
-  attn_implementation: "flash_attention_2"
-  # attn_implementation: "sdpa"
+  attn_implementation: "flash_attention_2"  # Use Flash Attention 2 for efficiency
   position_embedding_type: "rotary"
   num_labels: 1
   problem_type: "regression"
+  
+  # Model optimization settings
+  freeze_backbone: false  # Set to true to freeze ESM2 for faster training
+  use_feature_cache: true  # Enable feature caching for repeated sequences
+  
+  # Mixed precision settings
+  torch_dtype: "bfloat16"  # Use bfloat16 throughout
 
 ray:
   num_workers: 2
   use_gpu: true
+  
+  # Ray-specific optimizations
+  resources_per_worker:
+    CPU: 12  # Increased CPU allocation
+    GPU: 1
+  
+  # Ray scaling configuration
+  scaling_config:
+    placement_strategy: "SPREAD"  # Better GPU utilization
 
 deepspeed:
-  config_path: "/home/zhaolab/DataHD/AX/ESM2AE/train_config/ZERO2_FP16.yaml"
+  config_path: "/home/zhaolab/DataHD/AX/ESM2AE/train_config/ZERO2_optimized.yaml"
+
+# Performance monitoring
+performance:
+  monitor_gpu_usage: true
+  monitor_memory_usage: true
+  profile_data_loading: false  # Set to true for debugging data loading
+  benchmark_mode: false  # Set to true for performance benchmarking
