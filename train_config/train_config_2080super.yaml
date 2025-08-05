@@ -1,0 +1,128 @@
+# 针对双卡RTX 2080 Super 8G (无NVLink) 的优化配置
+# 重点：内存优化、避免跨卡通信开销、激进的梯度检查点
+
+wandb:
+  project: "ESM2AE-2080Super"
+  resume: "allow"
+  tags: ["2080super", "dual_gpu", "memory_optimized"]
+
+trainer:
+  output_dir: "/home/zhaolab/DataHD/AX/ESM2AE/checkpoint"
+  save_strategy: "steps"
+  save_steps: 1000  # 减少保存频率以节省I/O时间
+  learning_rate: 8e-5  # 降低学习率，因为批次较小
+  per_device_train_batch_size: 8  # 8G显存的安全批次大小
+  per_device_eval_batch_size: 16
+  num_train_epochs: 100
+  seed: 42
+  data_seed: 42
+  dataloader_num_workers: 8  # 减少worker数量避免内存压力
+  dataloader_prefetch_factor: 2  # 降低预取因子节省内存
+  dataloader_pin_memory: false  # 关闭pin memory节省系统内存
+  dataloader_drop_last: true
+  logging_dir: "/home/zhaolab/DataHD/AX/ESM2AE/logs"
+  
+  # 2080 Super不支持TF32，使用FP16
+  tf32: false
+  fp16: true  # 2080 Super使用FP16混合精度
+  bf16: false  # 2080 Super不支持BF16
+  
+  push_to_hub: false
+  report_to: "wandb"
+  weight_decay: 1e-4
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_epsilon: 1e-8
+  save_safetensors: true
+  greater_is_better: false
+  load_best_model_at_end: false
+  optim: "adamw_torch"  # 不使用fused版本以确保兼容性
+  gradient_accumulation_steps: 4  # 增加梯度累积补偿小批次
+  metric_for_best_model: "train_loss"
+  logging_steps: 50
+  warmup_ratio: 0.03  # 减少warmup比例
+  lr_scheduler_type: "cosine_with_restarts"  # 使用重启余弦调度
+  save_total_limit: 3  # 减少检查点数量节省存储
+  max_steps: -1
+  eval_steps: 2000
+  evaluation_strategy: "no"
+  
+  # 内存优化设置
+  group_by_length: true
+  length_column_name: "length"
+  remove_unused_columns: false
+  prediction_loss_only: true
+  skip_memory_metrics: true
+  
+  # 激进的梯度检查点和内存优化
+  max_grad_norm: 0.5  # 更严格的梯度裁剪
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false  # 使用更内存高效的检查点
+  
+  # I/O优化
+  dataloader_persistent_workers: false  # 关闭持久worker节省内存
+
+data:
+  train_path: "/home/zhaolab/DataHD/AX/ESM2AE/dataset"
+  cache_dir: "/home/zhaolab/DataHD/AX/ESM2AE/tokenizer_cache"
+  max_length: 384  # 进一步减少序列长度以节省内存
+  batch_size: 1000  # 减少预处理批次大小
+  preprocessing_num_proc: 4  # 减少预处理进程数
+
+model:
+  pretrained_model_name: "facebook/esm2_t33_650M_UR50D"
+  attn_implementation: "eager"  # 2080 Super使用标准attention
+  position_embedding_type: "rotary"
+  num_labels: 1
+  problem_type: "regression"
+  
+  # 内存优化设置
+  freeze_backbone: false
+  use_feature_cache: false  # 关闭特征缓存节省内存
+  
+  # 数据类型设置
+  torch_dtype: "float16"  # 使用float16
+
+ray:
+  num_workers: 2  # 双卡配置
+  use_gpu: true
+  
+  # 针对无NVLink的资源配置
+  resources_per_worker:
+    CPU: 8  # 减少CPU分配
+    GPU: 1
+  
+  # 优化跨卡通信
+  scaling_config:
+    placement_strategy: "PACK"  # 尽量减少跨节点通信
+    
+  # Ray训练配置
+  train_loop_config:
+    # 减少通信频率
+    ddp_backend: "nccl"
+    find_unused_parameters: false
+
+deepspeed:
+  config_path: "/home/zhaolab/DataHD/AX/ESM2AE/train_config/ZERO2_2080super.yaml"
+
+# 性能监控
+performance:
+  monitor_gpu_usage: true
+  monitor_memory_usage: true
+  profile_data_loading: false
+  benchmark_mode: false
+  
+# 2080 Super特定优化
+hardware_specific:
+  gpu_model: "RTX_2080_SUPER"
+  memory_gb: 8
+  nvlink: false
+  compute_capability: "7.5"
+  max_threads_per_block: 1024
+  
+  # 内存管理策略
+  memory_strategy:
+    empty_cache_frequency: 100  # 每100步清理缓存
+    gc_frequency: 200  # 每200步运行垃圾回收
+    max_memory_fraction: 0.85  # 最多使用85%显存
