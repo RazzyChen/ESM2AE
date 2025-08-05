@@ -2,15 +2,17 @@
 
 本文档说明如何在不同硬件配置间切换训练配置，以获得最佳性能。
 
-## 🔬 ESM-2论文训练参数
+## 🔬 当前训练配置
 
-根据ESM-2论文，我们的650M参数模型使用以下关键设置：
-- **批次大小**: 2M tokens (通过梯度累积实现)
-- **学习率**: 4e-4 (峰值)，2000步warmup，然后线性衰减到峰值的1/10
+当前配置针对快速测试和最大显存利用进行了优化：
+- **批次大小**: 
+  - 2080 Super: 12 × 4累积 × 512序列 = 24,576 tokens
+  - 3080: 32 × 2累积 × 512序列 = 32,768 tokens
+- **学习率**: 4e-4 (峰值)，500步warmup (训练步数的1/10)，余弦衰减
 - **优化器**: Adam (β1=0.9, β2=0.98, ε=1e-8, weight_decay=0.01)
-- **训练步数**: 500K steps
-- **序列长度**: 512 tokens (论文中提到1024，但我们使用512以适应显存)
-- **分布式策略**: 650M模型使用标准DDP (不需要FSDP)
+- **训练步数**: 5000 steps (快速测试，原值500K)
+- **序列长度**: 512 tokens
+- **显存利用**: 尽可能使用所有可用显存
 
 ## 支持的硬件配置
 
@@ -26,15 +28,15 @@
 - ✅ **大RAM利用**: 12个数据加载worker，8倍预取因子
 - ✅ **12核CPU优化**: 充分利用多核CPU资源
 
-#### 性能参数 (快速测试配置)
+#### 性能参数 (最大显存利用配置)
 ```yaml
-per_device_train_batch_size: 6      # 512序列长度下8G显存安全批次
-gradient_accumulation_steps: 8      # 统一设置 (原值: 651 for 2M tokens)
+per_device_train_batch_size: 12     # 尽可能使用显存 (原值: 6)
+gradient_accumulation_steps: 4      # 减少累积步数，因为批次增大了
 max_length: 512                     # 固定序列长度
 learning_rate: 4e-4                 # ESM-2论文峰值学习率
-max_steps: 5000                     # 快速测试 (原值: 500000 for ESM-2)
-warmup_steps: 2000                  # 2000步warmup
-final_lr_ratio: 0.1                 # 线性衰减到峰值的1/10
+max_steps: 5000                     # 快速测试 (原值: 500000)
+warmup_steps: 500                   # 训练步数的1/10
+lr_scheduler_type: "cosine"         # 余弦衰减
 ```
 
 ### 2. RTX 3080 单卡配置 (调试开发)
@@ -49,13 +51,15 @@ final_lr_ratio: 0.1                 # 线性衰减到峰值的1/10
 - ✅ **调试友好**: 频繁日志、性能分析
 - ✅ **无CPU卸载**: 单卡无需复杂内存管理
 
-#### 性能参数 (快速测试配置)
+#### 性能参数 (最大显存利用配置)
 ```yaml
-per_device_train_batch_size: 20     # 3080支持更大批次
-gradient_accumulation_steps: 8      # 统一设置 (原值: 195 for 2M tokens)
+per_device_train_batch_size: 32     # 尽可能使用显存 (原值: 20)
+gradient_accumulation_steps: 2      # 减少累积步数，因为批次增大了
 max_length: 512                     # 固定序列长度
 learning_rate: 4e-4                 # ESM-2论文峰值学习率
-max_steps: 5000                     # 快速测试 (原值: 500000 for ESM-2)
+max_steps: 5000                     # 快速测试 (原值: 500000)
+warmup_steps: 500                   # 训练步数的1/10
+lr_scheduler_type: "cosine"         # 余弦衰减
 tf32: true                          # 启用TF32加速
 bf16: true                          # 更稳定的混合精度
 ```
@@ -123,35 +127,40 @@ cp train_config/ZERO2_3080.yaml train_config/ZERO2_optimized.yaml
 
 ## 性能调优建议
 
-### 2080 Super 双卡优化
+### 2080 Super 单卡优化
 
-#### 内存优化
+#### 显存使用优化
 ```bash
 # 监控显存使用
 nvidia-smi -l 1
 
 # 如果显存不足，可以调整以下参数:
-per_device_train_batch_size: 6      # 减少到6
-max_length: 320                     # 进一步减少序列长度
+per_device_train_batch_size: 8      # 从12减少到8
 gradient_accumulation_steps: 6      # 相应增加累积步数
+# 或者减少序列长度:
+max_length: 384                     # 从512减少到384
 ```
 
-#### 通信优化
+#### 学习率调度优化
 ```bash
-# 确保NCCL环境变量设置正确
-export NCCL_DEBUG=INFO
-export NCCL_SOCKET_IFNAME=^docker0,lo
-export NCCL_IB_DISABLE=1            # 禁用InfiniBand
+# 当前使用余弦衰减，可以调整warmup比例:
+warmup_steps: 250                   # 训练步数的1/20 (更快收敛)
+warmup_steps: 1000                  # 训练步数的1/5 (更稳定)
 ```
 
 ### 3080 单卡优化
 
-#### 现代特性启用
+#### 显存使用优化
 ```bash
-# 确保Flash Attention安装
-pip install flash-attn --no-build-isolation
+# 监控显存使用
+nvidia-smi -l 1
 
-# 验证TF32支持
+# 如果显存不足，可以调整以下参数:
+per_device_train_batch_size: 24     # 从32减少到24
+gradient_accumulation_steps: 3      # 相应增加累积步数
+
+# 现代特性启用
+pip install flash-attn --no-build-isolation
 python -c "import torch; print(torch.backends.cuda.matmul.allow_tf32)"
 ```
 

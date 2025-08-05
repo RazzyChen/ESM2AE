@@ -11,7 +11,7 @@ trainer:
   save_strategy: "steps"
   save_steps: 1000  # 减少保存频率以节省I/O时间
   learning_rate: 4e-4  # ESM-2论文使用的峰值学习率
-  per_device_train_batch_size: 6  # 512序列长度下8G显存的安全批次大小
+  per_device_train_batch_size: 12  # 尽可能使用显存 (原值: 6)
   per_device_eval_batch_size: 16
   max_steps: 5000  # 快速测试 (原值: 500000 for ESM-2)
   num_train_epochs: -1  # 使用max_steps而不是epochs
@@ -38,15 +38,11 @@ trainer:
   greater_is_better: false
   load_best_model_at_end: false
   optim: "adamw_torch_fused"  # 2080也支持fused优化器
-  gradient_accumulation_steps: 8  # 统一设置 (原值: 651 for 2M tokens)
+  gradient_accumulation_steps: 4  # 减少累积步数，因为批次增大了
   metric_for_best_model: "train_loss"
   logging_steps: 50
-  warmup_steps: 2000  # ESM-2论文使用2000步warmup
-  lr_scheduler_type: "linear"  # ESM-2使用线性衰减到峰值的1/10
-  lr_scheduler_kwargs:
-    num_training_steps: 5000  # 总训练步数
-    num_warmup_steps: 2000    # warmup步数
-    final_lr_ratio: 0.1       # 最终学习率为峰值的1/10
+  warmup_steps: 500  # 训练步数的1/10: 5000 * 0.1 = 500
+  lr_scheduler_type: "cosine"  # 使用余弦衰减
   save_total_limit: 3  # 减少检查点数量节省存储
   eval_steps: 2000
   evaluation_strategy: "no"
