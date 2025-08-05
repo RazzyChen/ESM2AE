@@ -98,4 +98,3 @@ performance:
   monitor_gpu_usage: true
   monitor_memory_usage: true
   profile_data_loading: false  # Set to true for debugging data loading
-  benchmark_mode: false  # Set to true for performance benchmarking

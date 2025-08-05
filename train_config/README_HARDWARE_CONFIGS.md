@@ -200,11 +200,10 @@ iftop
 wandb
 ```
 
-#### 性能基准
+#### 性能监控
 ```bash
-# 运行性能测试
-python train_config/switch_config.py --hardware 2080super
-python train_ray.py --config-name trainer_config --performance.benchmark_mode=true
+# 启动训练并监控性能
+python3 train.py --config train_config/train_config_2080super.yaml
 
 # 预期性能指标:
 # 2080 Super x2: ~1000 tokens/sec

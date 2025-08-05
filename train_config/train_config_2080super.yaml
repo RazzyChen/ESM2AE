@@ -111,7 +111,6 @@ performance:
   monitor_gpu_usage: true
   monitor_memory_usage: true
   profile_data_loading: false
-  benchmark_mode: false
   
 # 2080 Super特定优化
 hardware_specific:
