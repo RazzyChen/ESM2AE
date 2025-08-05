@@ -2,6 +2,16 @@
 
 本文档说明如何在不同硬件配置间切换训练配置，以获得最佳性能。
 
+## 🔬 ESM-2论文训练参数
+
+根据ESM-2论文，我们的650M参数模型使用以下关键设置：
+- **批次大小**: 2M tokens (通过梯度累积实现)
+- **学习率**: 4e-4 (峰值)，2000步warmup，然后线性衰减到峰值的1/10
+- **优化器**: Adam (β1=0.9, β2=0.98, ε=1e-8, weight_decay=0.01)
+- **训练步数**: 500K steps
+- **序列长度**: 512 tokens (论文中提到1024，但我们使用512以适应显存)
+- **分布式策略**: 650M模型使用标准DDP (不需要FSDP)
+
 ## 支持的硬件配置
 
 ### 1. RTX 2080 Super 双卡配置 (生产训练)
@@ -16,12 +26,15 @@
 - ✅ **跨卡通信优化**: 无NVLink环境下的通信策略
 - ✅ **大RAM利用**: 16个数据加载worker，8倍预取因子
 
-#### 性能参数
+#### 性能参数 (遵循ESM-2论文设置)
 ```yaml
 per_device_train_batch_size: 6      # 512序列长度下8G显存安全批次
-gradient_accumulation_steps: 6      # 补偿小批次大小
+gradient_accumulation_steps: 277    # 接近ESM-2的2M tokens批次大小
 max_length: 512                     # 固定序列长度
-dataloader_num_workers: 16          # 利用64G RAM
+learning_rate: 4e-4                 # ESM-2论文峰值学习率
+max_steps: 500000                   # ESM-2论文训练步数
+adam_beta2: 0.98                    # ESM-2论文优化器设置
+weight_decay: 0.01                  # ESM-2论文权重衰减
 ```
 
 ### 2. RTX 3080 单卡配置 (调试开发)
@@ -36,11 +49,12 @@ dataloader_num_workers: 16          # 利用64G RAM
 - ✅ **调试友好**: 频繁日志、性能分析
 - ✅ **无CPU卸载**: 单卡无需复杂内存管理
 
-#### 性能参数
+#### 性能参数 (遵循ESM-2论文设置)
 ```yaml
 per_device_train_batch_size: 20     # 3080支持更大批次
-gradient_accumulation_steps: 2      # 快速反馈
-max_length: 512                     # 支持更长序列
+gradient_accumulation_steps: 195    # 接近ESM-2的2M tokens批次大小
+max_length: 512                     # 固定序列长度
+learning_rate: 4e-4                 # ESM-2论文峰值学习率
 tf32: true                          # 启用TF32加速
 bf16: true                          # 更稳定的混合精度
 ```

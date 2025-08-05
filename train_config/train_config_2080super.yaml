@@ -10,10 +10,11 @@ trainer:
   output_dir: "/home/zhaolab/DataHD/AX/ESM2AE/checkpoint"
   save_strategy: "steps"
   save_steps: 1000  # 减少保存频率以节省I/O时间
-  learning_rate: 8e-5  # 降低学习率，因为批次较小
+  learning_rate: 4e-4  # ESM-2论文使用的峰值学习率
   per_device_train_batch_size: 6  # 512序列长度下8G显存的安全批次大小
   per_device_eval_batch_size: 16
-  num_train_epochs: 100
+  max_steps: 500000  # ESM-2论文训练500K步
+  num_train_epochs: -1  # 使用max_steps而不是epochs
   seed: 42
   data_seed: 42
   dataloader_num_workers: 16  # 利用64G RAM优势增加worker数量
@@ -29,21 +30,20 @@ trainer:
   
   push_to_hub: false
   report_to: "wandb"
-  weight_decay: 1e-4
+  weight_decay: 0.01  # ESM-2论文使用的权重衰减
   adam_beta1: 0.9
-  adam_beta2: 0.95
+  adam_beta2: 0.98  # ESM-2论文使用的beta2
   adam_epsilon: 1e-8
   save_safetensors: true
   greater_is_better: false
   load_best_model_at_end: false
-  optim: "adamw_torch"  # 不使用fused版本以确保兼容性
-  gradient_accumulation_steps: 6  # 增加梯度累积补偿小批次
+  optim: "adamw_torch_fused"  # 2080也支持fused优化器
+  gradient_accumulation_steps: 277  # 接近ESM-2的2M tokens: 6*2*277*512≈1.7M tokens
   metric_for_best_model: "train_loss"
   logging_steps: 50
-  warmup_ratio: 0.03  # 减少warmup比例
-  lr_scheduler_type: "cosine_with_restarts"  # 使用重启余弦调度
+  warmup_steps: 2000  # ESM-2论文使用2000步warmup
+  lr_scheduler_type: "linear"  # ESM-2使用线性衰减到峰值的1/10
   save_total_limit: 3  # 减少检查点数量节省存储
-  max_steps: -1
   eval_steps: 2000
   evaluation_strategy: "no"
   
