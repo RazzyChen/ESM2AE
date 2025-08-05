@@ -19,25 +19,25 @@ CONFIG_MAPPING = {
     "2080super": {
         "train_config": "train_config_2080super.yaml",
         "deepspeed_config": "ZERO2_2080super.yaml",
-        "description": "双卡RTX 2080 Super 8G VRAM + 64G RAM (无NVLink)",
+        "description": "单卡RTX 2080 Super 8G VRAM + 64G RAM + 12核CPU",
         "features": [
             "FP16混合精度",
             "激进内存优化",
             "CPU参数卸载",
             "利用64G RAM优势",
-            "跨卡通信优化"
+            "12核CPU优化"
         ]
     },
     "3080": {
         "train_config": "train_config_3080.yaml", 
         "deepspeed_config": "ZERO2_3080.yaml",
-        "description": "单卡RTX 3080 (调试配置)",
+        "description": "单卡RTX 3080 + 12核CPU (调试配置)",
         "features": [
             "TF32 + BF16混合精度",
             "Flash Attention 2",
             "Fused优化器",
             "调试友好配置",
-            "性能分析工具"
+            "12核CPU优化"
         ]
     }
 }

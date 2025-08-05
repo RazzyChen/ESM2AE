@@ -1,4 +1,4 @@
-# 针对单卡RTX 3080 的调试优化配置
+# 针对单卡RTX 3080 + 12核CPU 的调试优化配置
 # 重点：利用现代GPU特性 (TF32, BF16, Flash Attention)，快速迭代调试
 
 wandb:
@@ -17,7 +17,7 @@ trainer:
   num_train_epochs: -1  # 使用max_steps而不是epochs
   seed: 42
   data_seed: 42
-  dataloader_num_workers: 12  # 3080配置通常CPU更强
+  dataloader_num_workers: 12  # 匹配12核CPU配置
   dataloader_prefetch_factor: 4
   dataloader_pin_memory: true  # 3080有足够内存支持pin memory
   dataloader_drop_last: true
@@ -90,7 +90,7 @@ ray:
   
   # 单卡资源配置
   resources_per_worker:
-    CPU: 16  # 3080环境通常CPU资源更充足
+    CPU: 12  # 12核CPU配置
     GPU: 1
   
   # 单卡不需要复杂的分布式配置
@@ -110,8 +110,9 @@ performance:
 # 3080特定优化
 hardware_specific:
   gpu_model: "RTX_3080"
-  memory_gb: 10  # 或12GB取决于具体型号
-  nvlink: false  # 单卡无需NVLink
+  gpu_count: 1  # 单卡配置
+  vram_gb: 10  # 或12GB取决于具体型号
+  cpu_cores: 12  # 12核CPU
   compute_capability: "8.6"
   tensor_cores: "3rd_gen"
   

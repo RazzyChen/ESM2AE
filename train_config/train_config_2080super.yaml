@@ -1,10 +1,10 @@
-# 针对双卡RTX 2080 Super 8G (无NVLink) 的优化配置
-# 重点：内存优化、避免跨卡通信开销、激进的梯度检查点
+# 针对单卡RTX 2080 Super 8G + 64G RAM + 12核CPU 的优化配置
+# 重点：内存优化、利用大RAM优势、FP16混合精度
 
 wandb:
   project: "ESM2AE-2080Super"
   resume: "allow"
-  tags: ["2080super", "dual_gpu", "memory_optimized"]
+  tags: ["2080super", "single_gpu", "memory_optimized", "large_ram"]
 
 trainer:
   output_dir: "/home/zhaolab/DataHD/AX/ESM2AE/checkpoint"
@@ -17,7 +17,7 @@ trainer:
   num_train_epochs: -1  # 使用max_steps而不是epochs
   seed: 42
   data_seed: 42
-  dataloader_num_workers: 16  # 利用64G RAM优势增加worker数量
+  dataloader_num_workers: 12  # 匹配12核CPU配置
   dataloader_prefetch_factor: 8  # 利用大内存增加预取
   dataloader_pin_memory: true  # 64G RAM足够支持pin memory
   dataloader_drop_last: true
@@ -38,7 +38,7 @@ trainer:
   greater_is_better: false
   load_best_model_at_end: false
   optim: "adamw_torch_fused"  # 2080也支持fused优化器
-  gradient_accumulation_steps: 277  # 接近ESM-2的2M tokens: 6*2*277*512≈1.7M tokens
+  gradient_accumulation_steps: 651  # 接近ESM-2的2M tokens: 6*1*651*512≈2M tokens
   metric_for_best_model: "train_loss"
   logging_steps: 50
   warmup_steps: 2000  # ESM-2论文使用2000步warmup
@@ -85,23 +85,17 @@ model:
   torch_dtype: "float16"  # 使用float16
 
 ray:
-  num_workers: 2  # 双卡配置
+  num_workers: 1  # 单卡配置
   use_gpu: true
   
-  # 针对无NVLink的资源配置
+  # 单卡资源配置
   resources_per_worker:
-    CPU: 16  # 利用充足的CPU和内存资源
+    CPU: 12  # 12核CPU配置
     GPU: 1
   
-  # 优化跨卡通信
+  # 单卡配置
   scaling_config:
-    placement_strategy: "PACK"  # 尽量减少跨节点通信
-    
-  # Ray训练配置
-  train_loop_config:
-    # 减少通信频率
-    ddp_backend: "nccl"
-    find_unused_parameters: false
+    placement_strategy: "PACK"
 
 deepspeed:
   config_path: "/home/zhaolab/DataHD/AX/ESM2AE/train_config/ZERO2_2080super.yaml"
@@ -116,9 +110,10 @@ performance:
 # 2080 Super特定优化
 hardware_specific:
   gpu_model: "RTX_2080_SUPER"
+  gpu_count: 1  # 单卡配置
   vram_gb: 8  # 显存限制
   ram_gb: 64  # 系统内存充足
-  nvlink: false
+  cpu_cores: 12  # 12核CPU
   compute_capability: "7.5"
   max_threads_per_block: 1024
   
