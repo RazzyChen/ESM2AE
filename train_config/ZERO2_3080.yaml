@@ -1,0 +1,119 @@
+{
+  "bf16": {
+    "enabled": true,
+    "auto_cast": false,
+    "loss_scale": 0,
+    "initial_scale_power": 16,
+    "loss_scale_window": 1000,
+    "hysteresis": 2,
+    "min_loss_scale": 1
+  },
+  "optimizer": {
+    "type": "AdamW",
+    "params": {
+      "lr": "auto",
+      "betas": "auto",
+      "eps": "auto", 
+      "weight_decay": "auto"
+    }
+  },
+  "scheduler": {
+    "type": "WarmupCosineLR",
+    "params": {
+      "warmup_min_lr": "auto",
+      "warmup_max_lr": "auto",
+      "warmup_num_steps": "auto",
+      "cos_min_ratio": 0.1
+    }
+  },
+  "zero_optimization": {
+    "stage": 2,
+    "offload_optimizer": {
+      "device": "none"
+    },
+    "offload_param": {
+      "device": "none"
+    },
+    "allgather_partitions": true,
+    "allgather_bucket_size": 500000000,
+    "overlap_comm": true,
+    "reduce_scatter": true,
+    "reduce_bucket_size": 200000000,
+    "contiguous_gradients": true,
+    "cpu_offload": false,
+    "sub_group_size": 1e9,
+    "round_robin_gradients": false
+  },
+  "activation_checkpointing": {
+    "partition_activations": false,
+    "cpu_checkpointing": false,
+    "contiguous_memory_optimization": false,
+    "number_checkpoints": 2,
+    "synchronize_checkpoint_boundary": false,
+    "profile": false
+  },
+  "gradient_accumulation_steps": "auto",
+  "gradient_clipping": "auto", 
+  "steps_per_print": 50,
+  "train_batch_size": "auto",
+  "train_micro_batch_size_per_gpu": "auto",
+  "wall_clock_breakdown": false,
+  "memory_breakdown": false,
+  "dump_state": false,
+  "load_universal_checkpoint": false,
+  "tensorboard": {
+    "enabled": false,
+    "output_path": "",
+    "job_name": "DeepSpeed3080Debug"
+  },
+  "flops_profiler": {
+    "enabled": true,
+    "profile_step": 1,
+    "module_depth": -1,
+    "top_modules": 3,
+    "detailed": true,
+    "warm_up": 5
+  },
+  "communication_data_type": "fp32",
+  "elastic_checkpoint": false,
+  "curriculum_learning": {
+    "enabled": false
+  },
+  "comms_logger": {
+    "enabled": false,
+    "verbose": false,
+    "prof_all": false,
+    "debug": false
+  },
+  "compression_training": {
+    "weight_quantization": {
+      "shared_parameters": {
+        "enabled": false,
+        "quantizer_kernel": false,
+        "schedule_offset": 0,
+        "quantize_groups": 1,
+        "quantize_verbose": false,
+        "quantization_type": "symmetric",
+        "quantize_weight_in_forward": false,
+        "rounding": "nearest",
+        "fp16_mixed_quantize": false,
+        "quantize_change_ratio": 0.001
+      }
+    },
+    "activation_quantization": {
+      "shared_parameters": {
+        "enabled": false,
+        "quantization_type": "symmetric",
+        "range_calibration": "dynamic",
+        "schedule_offset": 0
+      }
+    }
+  },
+  "aio": {
+    "block_size": 1048576,
+    "queue_depth": 16,
+    "thread_count": 2,
+    "single_submit": false,
+    "overlap_events": true
+  }
+}

@@ -1,0 +1,131 @@
+# 针对单卡RTX 2080 Super 8G + 64G RAM + 12核CPU 的优化配置
+# 重点：内存优化、利用大RAM优势、FP16混合精度
+
+wandb:
+  project: "ESM2AE-2080Super"
+  resume: "allow"
+  tags: ["2080super", "single_gpu", "memory_optimized", "large_ram"]
+
+trainer:
+  output_dir: "/home/zhaolab/DataHD/AX/ESM2AE/checkpoint"
+  save_strategy: "steps"
+  save_steps: 1000  # 减少保存频率以节省I/O时间
+  learning_rate: 4e-4  # ESM-2论文使用的峰值学习率
+  per_device_train_batch_size: 12  # 尽可能使用显存 (原值: 6)
+  per_device_eval_batch_size: 16
+  max_steps: 5000  # 快速测试 (原值: 500000 for ESM-2)
+  num_train_epochs: -1  # 使用max_steps而不是epochs
+  seed: 42
+  data_seed: 42
+  dataloader_num_workers: 12  # 匹配12核CPU配置
+  dataloader_prefetch_factor: 8  # 利用大内存增加预取
+  dataloader_pin_memory: true  # 64G RAM足够支持pin memory
+  dataloader_drop_last: true
+  logging_dir: "/home/zhaolab/DataHD/AX/ESM2AE/logs"
+  
+  # 2080 Super不支持TF32，使用FP16
+  tf32: false
+  fp16: true  # 2080 Super使用FP16混合精度
+  bf16: false  # 2080 Super不支持BF16
+  
+  push_to_hub: false
+  report_to: "wandb"
+  weight_decay: 0.01  # ESM-2论文使用的权重衰减
+  adam_beta1: 0.9
+  adam_beta2: 0.98  # ESM-2论文使用的beta2
+  adam_epsilon: 1e-8
+  save_safetensors: true
+  greater_is_better: false
+  load_best_model_at_end: false
+  optim: "adamw_torch_fused"  # 2080也支持fused优化器
+  gradient_accumulation_steps: 4  # 减少累积步数，因为批次增大了
+  metric_for_best_model: "train_loss"
+  logging_steps: 50
+  warmup_steps: 500  # 训练步数的1/10: 5000 * 0.1 = 500
+  lr_scheduler_type: "cosine"  # 使用余弦衰减
+  save_total_limit: 3  # 减少检查点数量节省存储
+  eval_steps: 2000
+  evaluation_strategy: "no"
+  
+  # 内存优化设置
+  group_by_length: true
+  length_column_name: "length"
+  remove_unused_columns: false
+  prediction_loss_only: true
+  skip_memory_metrics: true
+  
+  # 激进的梯度检查点和内存优化
+  max_grad_norm: 0.5  # 更严格的梯度裁剪
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false  # 使用更内存高效的检查点
+  
+  # I/O优化
+  dataloader_persistent_workers: true  # 64G RAM支持持久worker提升性能
+
+data:
+  train_path: "/home/zhaolab/DataHD/AX/ESM2AE/dataset"
+  cache_dir: "/home/zhaolab/DataHD/AX/ESM2AE/tokenizer_cache"
+  max_length: 512  # 固定序列长度
+  batch_size: 4000  # 利用64G RAM增加预处理批次
+  preprocessing_num_proc: 12  # 利用大内存增加预处理进程
+
+model:
+  pretrained_model_name: "facebook/esm2_t33_650M_UR50D"
+  attn_implementation: "eager"  # 2080 Super使用标准attention
+  position_embedding_type: "rotary"
+  num_labels: 1
+  problem_type: "regression"
+  
+  # 内存优化设置
+  freeze_backbone: false
+  use_feature_cache: false  # 关闭特征缓存节省内存
+  
+  # 数据类型设置
+  torch_dtype: "float16"  # 使用float16
+
+ray:
+  num_workers: 1  # 单卡配置
+  use_gpu: true
+  
+  # 单卡资源配置
+  resources_per_worker:
+    CPU: 12  # 12核CPU配置
+    GPU: 1
+  
+  # 单卡配置
+  scaling_config:
+    placement_strategy: "PACK"
+
+deepspeed:
+  config_path: "/home/zhaolab/DataHD/AX/ESM2AE/train_config/ZERO2_2080super.yaml"
+
+# 性能监控
+performance:
+  monitor_gpu_usage: true
+  monitor_memory_usage: true
+  profile_data_loading: false
+  benchmark_mode: false  # 设为true启用性能基准测试
+  
+# 2080 Super特定优化
+hardware_specific:
+  gpu_model: "RTX_2080_SUPER"
+  gpu_count: 1  # 单卡配置
+  vram_gb: 8  # 显存限制
+  ram_gb: 64  # 系统内存充足
+  cpu_cores: 12  # 12核CPU
+  compute_capability: "7.5"
+  max_threads_per_block: 1024
+  
+  # 内存管理策略 - 利用大RAM优势
+  memory_strategy:
+    # 显存管理
+    empty_cache_frequency: 100  # 每100步清理显存缓存
+    gc_frequency: 200  # 每200步运行垃圾回收
+    max_vram_fraction: 0.85  # 最多使用85%显存
+    
+    # RAM优化策略
+    enable_cpu_offload: true  # 启用CPU卸载
+    cpu_cache_size: "16GB"  # 利用大内存作为缓存
+    prefetch_to_ram: true  # 预取数据到RAM
+    ram_buffer_size: "8GB"  # RAM缓冲区大小
