@@ -16,9 +16,9 @@ trainer:
   num_train_epochs: 100
   seed: 42
   data_seed: 42
-  dataloader_num_workers: 8  # 减少worker数量避免内存压力
-  dataloader_prefetch_factor: 2  # 降低预取因子节省内存
-  dataloader_pin_memory: false  # 关闭pin memory节省系统内存
+  dataloader_num_workers: 16  # 利用64G RAM优势增加worker数量
+  dataloader_prefetch_factor: 8  # 利用大内存增加预取
+  dataloader_pin_memory: true  # 64G RAM足够支持pin memory
   dataloader_drop_last: true
   logging_dir: "/home/zhaolab/DataHD/AX/ESM2AE/logs"
   
@@ -61,14 +61,14 @@ trainer:
     use_reentrant: false  # 使用更内存高效的检查点
   
   # I/O优化
-  dataloader_persistent_workers: false  # 关闭持久worker节省内存
+  dataloader_persistent_workers: true  # 64G RAM支持持久worker提升性能
 
 data:
   train_path: "/home/zhaolab/DataHD/AX/ESM2AE/dataset"
   cache_dir: "/home/zhaolab/DataHD/AX/ESM2AE/tokenizer_cache"
   max_length: 384  # 进一步减少序列长度以节省内存
-  batch_size: 1000  # 减少预处理批次大小
-  preprocessing_num_proc: 4  # 减少预处理进程数
+  batch_size: 4000  # 利用64G RAM增加预处理批次
+  preprocessing_num_proc: 12  # 利用大内存增加预处理进程
 
 model:
   pretrained_model_name: "facebook/esm2_t33_650M_UR50D"
@@ -90,7 +90,7 @@ ray:
   
   # 针对无NVLink的资源配置
   resources_per_worker:
-    CPU: 8  # 减少CPU分配
+    CPU: 16  # 利用充足的CPU和内存资源
     GPU: 1
   
   # 优化跨卡通信
@@ -116,13 +116,21 @@ performance:
 # 2080 Super特定优化
 hardware_specific:
   gpu_model: "RTX_2080_SUPER"
-  memory_gb: 8
+  vram_gb: 8  # 显存限制
+  ram_gb: 64  # 系统内存充足
   nvlink: false
   compute_capability: "7.5"
   max_threads_per_block: 1024
   
-  # 内存管理策略
+  # 内存管理策略 - 利用大RAM优势
   memory_strategy:
-    empty_cache_frequency: 100  # 每100步清理缓存
+    # 显存管理
+    empty_cache_frequency: 100  # 每100步清理显存缓存
     gc_frequency: 200  # 每200步运行垃圾回收
-    max_memory_fraction: 0.85  # 最多使用85%显存
+    max_vram_fraction: 0.85  # 最多使用85%显存
+    
+    # RAM优化策略
+    enable_cpu_offload: true  # 启用CPU卸载
+    cpu_cache_size: "16GB"  # 利用大内存作为缓存
+    prefetch_to_ram: true  # 预取数据到RAM
+    ram_buffer_size: "8GB"  # RAM缓冲区大小

@@ -31,15 +31,15 @@
     "offload_optimizer": {
       "device": "cpu",
       "pin_memory": true,
-      "buffer_count": 4,
+      "buffer_count": 8,
       "fast_init": false
     },
     "offload_param": {
       "device": "cpu",
       "pin_memory": true,
-      "buffer_count": 4,
-      "buffer_size": 5e7,
-      "max_in_cpu": 8e8
+      "buffer_count": 8,
+      "buffer_size": 2e8,
+      "max_in_cpu": 4e9
     },
     "allgather_partitions": true,
     "allgather_bucket_size": 200000000,
@@ -118,8 +118,8 @@
   },
   "aio": {
     "block_size": 1048576,
-    "queue_depth": 8,
-    "thread_count": 1,
+    "queue_depth": 16,
+    "thread_count": 4,
     "single_submit": false,
     "overlap_events": true
   }
