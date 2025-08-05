@@ -26,15 +26,15 @@
 - ✅ **大RAM利用**: 12个数据加载worker，8倍预取因子
 - ✅ **12核CPU优化**: 充分利用多核CPU资源
 
-#### 性能参数 (遵循ESM-2论文设置)
+#### 性能参数 (快速测试配置)
 ```yaml
 per_device_train_batch_size: 6      # 512序列长度下8G显存安全批次
-gradient_accumulation_steps: 651    # 接近ESM-2的2M tokens批次大小
+gradient_accumulation_steps: 8      # 统一设置 (原值: 651 for 2M tokens)
 max_length: 512                     # 固定序列长度
 learning_rate: 4e-4                 # ESM-2论文峰值学习率
-max_steps: 500000                   # ESM-2论文训练步数
-adam_beta2: 0.98                    # ESM-2论文优化器设置
-weight_decay: 0.01                  # ESM-2论文权重衰减
+max_steps: 5000                     # 快速测试 (原值: 500000 for ESM-2)
+warmup_steps: 2000                  # 2000步warmup
+final_lr_ratio: 0.1                 # 线性衰减到峰值的1/10
 ```
 
 ### 2. RTX 3080 单卡配置 (调试开发)
@@ -49,12 +49,13 @@ weight_decay: 0.01                  # ESM-2论文权重衰减
 - ✅ **调试友好**: 频繁日志、性能分析
 - ✅ **无CPU卸载**: 单卡无需复杂内存管理
 
-#### 性能参数 (遵循ESM-2论文设置)
+#### 性能参数 (快速测试配置)
 ```yaml
 per_device_train_batch_size: 20     # 3080支持更大批次
-gradient_accumulation_steps: 195    # 接近ESM-2的2M tokens批次大小
+gradient_accumulation_steps: 8      # 统一设置 (原值: 195 for 2M tokens)
 max_length: 512                     # 固定序列长度
 learning_rate: 4e-4                 # ESM-2论文峰值学习率
+max_steps: 5000                     # 快速测试 (原值: 500000 for ESM-2)
 tf32: true                          # 启用TF32加速
 bf16: true                          # 更稳定的混合精度
 ```
